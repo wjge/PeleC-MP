@@ -43,7 +43,7 @@ DEFINES += -DPARTICLES
 endif
 
 ifeq ($(USE_MPI), TRUE)
- override XTRALIBS += -lifcore
+# override XTRALIBS += -lifcore
 endif
 ifeq ($(DEBUG), TRUE)
 DEFINES += -DDEBUG
