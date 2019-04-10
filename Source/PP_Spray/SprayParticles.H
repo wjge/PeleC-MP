@@ -87,6 +87,8 @@ public:
     ///
     void insertParticles (amrex::Real time, int nstep, int lev);
 
+    void insertParticles (amrex::Real time, int nstep, int lev, amrex::Real dt);
+
     void injectParticles (amrex::Real time, int nstep, int lev);
 
 private:

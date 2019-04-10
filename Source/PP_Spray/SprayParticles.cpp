@@ -488,9 +488,117 @@ SprayParticleContainer::insertParticles (Real time, int nstep, int lev)
   Redistribute();
 }
 
-
 static bool my_first = true; // Hack to avoid adding new particle on every call
 static Real t_next = 0.;
+
+void
+SprayParticleContainer::insertParticles (Real time, int nstep, int lev, amrex::Real dt)
+{
+  if (my_first) {
+    srand(15);
+    my_first = false;
+    t_next = time;
+  }
+
+  //std::cout<<"---insertParticles called---\n"<<std::endl;
+
+  //std::cout << "TIME " << time << " at parent step "<< nstep <<"; next injection time at " << t_next << '\n' << std::endl;
+  //if(time < t_next) return;
+  t_next+= 1e-5;
+
+  const double pi = std::atan(1.0)*4.;
+  const Geometry& geom = this->m_gdb->Geom(lev);
+
+  int n_particles = 10;
+  //Real z = 1e-6;
+  int i = 0;
+  
+  Real part_D    = 1e-6;
+  Real part_rho  = 681.41;
+  Real part_mass = part_rho * 4./3. * pi * pow(part_D*.5,3.);
+  Real mass_flow = 2e-7/10.;
+  Real mass_target = mass_flow * dt;
+  Real mass = 0.;
+
+  int n_max_part = 100000;
+
+
+  /*struct XYZ_part
+  {
+    Real x;
+    Real y;
+    Real z;
+  };*/
+
+  //XYZ_part parts[n_max_part];
+
+  int n = 0;
+
+  while (mass < mass_target)
+  {
+    //Real rand1 = double(rand()) / (double(RAND_MAX) + 1.0);
+    //Real rand2 = double(rand()) / (double(RAND_MAX) + 1.0);
+
+    //Real x = 1e-6;
+    //Real y = 2+4*rand1;
+    //Real z = 1.5*rand2;
+ 
+   // if (pow(x,2.)+pow(y,2) < pow(.00017*.5,2.))
+   // {
+      mass += part_mass;
+      //parts[n] = {x,y,z};
+      n += 1;
+  //  }
+  }
+
+  // same particle array parts is created on every cpu
+  // MFIter can loop over valid boxes and check for every box if inflow particles belong to box
+  
+  // number of particles to insert overall
+  int n_part_insert = n;
+
+  //amrex::Print() << "mass_flow="<<mass_flow<<", mass_target="<<mass_target<<", part_mass="<<part_mass<<", mass_target/part_mass="<<(mass_target/part_mass)<<", n_part_insert="<<n_part_insert<<'\n';
+  //std::cout << "parts[0].x=" << parts[0].x << ", parts[0].y=" << parts[0].y << "parts[1].x=" << parts[1].x << ", parts[1].y=" << parts[1].y << '\n';
+
+  for (MFIter mfi = MakeMFIter(lev); mfi.isValid(); ++mfi) {
+
+    auto& particles = GetParticles(lev)[std::make_pair(mfi.index(),
+                                                       mfi.LocalTileIndex())];
+
+    const Box& bx = mfi.tilebox();
+    const RealBox& temp = RealBox(bx,geom.CellSize(),geom.ProbLo());
+    const Real* xlo = temp.lo();
+    const Real* xhi = temp.hi();
+
+    for(int n = 0; n < n_part_insert; ++n)
+    {
+      Real rand1 = double(rand()) / (double(RAND_MAX) + 1.0);
+      Real rand2 = double(rand()) / (double(RAND_MAX) + 1.0);
+
+	    ParticleType p;
+	    p.id()   = ParticleType::NextID();
+	    p.cpu()  = ParallelDescriptor::MyProc();
+	  
+	    p.pos(0) = 1e-6;
+	    p.pos(1) = 2+4.0*rand1;
+	    p.pos(2) = 1.5*rand2;
+
+	    // fill in NSR_SPR items; p.rdata(0) to p.rdata(2) are the velocities
+	    p.rdata(0) = 1.0;
+	    p.rdata(1) = 0.0;
+	    p.rdata(2) = 0.0;
+	p.rdata(AMREX_SPACEDIM) = 293.; // temperature
+	p.rdata(AMREX_SPACEDIM+1) = 1e-6; // diameter
+	p.rdata(AMREX_SPACEDIM+2) = 681.41; // fuel density
+	  
+	particles.push_back(p);
+	  
+	//std::cout << "Inserting particle p.id=" << p.id()<<'\n' << std::endl;
+	//std::cout << "Inserting particle p.id=" << p.id() << ", p.cpu="<< p.cpu() <<", time=" << time << ", level=" << lev << ", nstep=" << nstep <<", xlo[0]="<< xlo[0] << x << ", xhi[0]="<<xhi[0]<<", xlo[1]="<<xlo[1]<<", xhi[1]="<<xhi[1]<<", xlo[2]="<<xlo[2]<<", xhi[2]="<<xhi[2]<<'\n' << std::endl;
+   }
+ }
+  Redistribute();
+}
 
 void
 SprayParticleContainer::injectParticles (Real time, int nstep, int lev)
