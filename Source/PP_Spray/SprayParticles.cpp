@@ -499,7 +499,9 @@ SprayParticleContainer::insertParticles (Real time, int nstep, int lev, amrex::R
     my_first = false;
     t_next = time;
   }
-
+  
+  if(nstep%10!=0) return; 
+  //return;
   //std::cout<<"---insertParticles called---\n"<<std::endl;
 
   //std::cout << "TIME " << time << " at parent step "<< nstep <<"; next injection time at " << t_next << '\n' << std::endl;
@@ -516,26 +518,16 @@ SprayParticleContainer::insertParticles (Real time, int nstep, int lev, amrex::R
   Real part_D    = 1e-6;
   Real part_rho  = 681.41;
   Real part_mass = part_rho * 4./3. * pi * pow(part_D*.5,3.);
-  Real mass_flow = 2e-7/10.;
+  Real mass_flow = 2e-15/10.;
   Real mass_target = mass_flow * dt;
   Real mass = 0.;
 
   int n_max_part = 100000;
 
-
-  /*struct XYZ_part
-  {
-    Real x;
-    Real y;
-    Real z;
-  };*/
-
-  //XYZ_part parts[n_max_part];
-
   int n = 0;
 
-  while (mass < mass_target)
-  {
+  //while (mass < mass_target)
+  //{
     //Real rand1 = double(rand()) / (double(RAND_MAX) + 1.0);
     //Real rand2 = double(rand()) / (double(RAND_MAX) + 1.0);
 
@@ -545,17 +537,17 @@ SprayParticleContainer::insertParticles (Real time, int nstep, int lev, amrex::R
  
    // if (pow(x,2.)+pow(y,2) < pow(.00017*.5,2.))
    // {
-      mass += part_mass;
+   //   mass += part_mass;
       //parts[n] = {x,y,z};
-      n += 1;
+   //   n += 1;
   //  }
-  }
+  //}
 
   // same particle array parts is created on every cpu
   // MFIter can loop over valid boxes and check for every box if inflow particles belong to box
   
   // number of particles to insert overall
-  int n_part_insert = n;
+  int n_part_insert = 10;
 
   //amrex::Print() << "mass_flow="<<mass_flow<<", mass_target="<<mass_target<<", part_mass="<<part_mass<<", mass_target/part_mass="<<(mass_target/part_mass)<<", n_part_insert="<<n_part_insert<<'\n';
   //std::cout << "parts[0].x=" << parts[0].x << ", parts[0].y=" << parts[0].y << "parts[1].x=" << parts[1].x << ", parts[1].y=" << parts[1].y << '\n';
@@ -591,11 +583,15 @@ SprayParticleContainer::insertParticles (Real time, int nstep, int lev, amrex::R
 	p.rdata(AMREX_SPACEDIM+1) = 1e-6; // diameter
 	p.rdata(AMREX_SPACEDIM+2) = 681.41; // fuel density
 	  
+   if(p.pos(0) > xlo[0] && p.pos(0) < xhi[0] && 
+      p.pos(1) > xlo[1] && p.pos(1) < xhi[1] && 
+      p.pos(2) > xlo[2] && p.pos(2) < xhi[2]) {
 	particles.push_back(p);
-	  
+   }	  
 	//std::cout << "Inserting particle p.id=" << p.id()<<'\n' << std::endl;
 	//std::cout << "Inserting particle p.id=" << p.id() << ", p.cpu="<< p.cpu() <<", time=" << time << ", level=" << lev << ", nstep=" << nstep <<", xlo[0]="<< xlo[0] << x << ", xhi[0]="<<xhi[0]<<", xlo[1]="<<xlo[1]<<", xhi[1]="<<xhi[1]<<", xlo[2]="<<xlo[2]<<", xhi[2]="<<xhi[2]<<'\n' << std::endl;
    }
+   // std::cout << " wge particle count size=" << particles.size()<<'\n' << std::endl;
  }
   Redistribute();
 }
