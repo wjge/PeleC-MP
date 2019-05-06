@@ -511,7 +511,7 @@ SprayParticleContainer::insertParticles (Real time, int nstep, int lev, amrex::R
   const double pi = std::atan(1.0)*4.;
   const Geometry& geom = this->m_gdb->Geom(lev);
 
-  int n_particles = 10;
+  int n_particles = 20;
   //Real z = 1e-6;
   int i = 0;
   
@@ -547,7 +547,7 @@ SprayParticleContainer::insertParticles (Real time, int nstep, int lev, amrex::R
   // MFIter can loop over valid boxes and check for every box if inflow particles belong to box
   
   // number of particles to insert overall
-  int n_part_insert = 10;
+  int n_part_insert = 20;
 
   //amrex::Print() << "mass_flow="<<mass_flow<<", mass_target="<<mass_target<<", part_mass="<<part_mass<<", mass_target/part_mass="<<(mass_target/part_mass)<<", n_part_insert="<<n_part_insert<<'\n';
   //std::cout << "parts[0].x=" << parts[0].x << ", parts[0].y=" << parts[0].y << "parts[1].x=" << parts[1].x << ", parts[1].y=" << parts[1].y << '\n';
@@ -562,32 +562,37 @@ SprayParticleContainer::insertParticles (Real time, int nstep, int lev, amrex::R
     const Real* xlo = temp.lo();
     const Real* xhi = temp.hi();
 
-    for(int n = 0; n < n_part_insert; ++n)
-    {
+    for(int n = 0, iter=0; n < n_part_insert && iter<200 ;) {
       Real rand1 = double(rand()) / (double(RAND_MAX) + 1.0);
       Real rand2 = double(rand()) / (double(RAND_MAX) + 1.0);
 
 	    ParticleType p;
-	    p.id()   = ParticleType::NextID();
-	    p.cpu()  = ParallelDescriptor::MyProc();
-	  
-	    p.pos(0) = 1e-6;
+
+      p.pos(0) = 1e-6;
 	    p.pos(1) = 2+4.0*rand1;
 	    p.pos(2) = 1.5*rand2;
 
-	    // fill in NSR_SPR items; p.rdata(0) to p.rdata(2) are the velocities
-	    p.rdata(0) = 1.0;
-	    p.rdata(1) = 0.0;
-	    p.rdata(2) = 0.0;
-	p.rdata(AMREX_SPACEDIM) = 293.; // temperature
-	p.rdata(AMREX_SPACEDIM+1) = 1e-6; // diameter
-	p.rdata(AMREX_SPACEDIM+2) = 681.41; // fuel density
+      if(p.pos(0) > xlo[0] && p.pos(0) < xhi[0] && 
+         p.pos(1) > xlo[1] && p.pos(1) < xhi[1] && 
+         p.pos(2) > xlo[2] && p.pos(2) < xhi[2]) {
+
+	      p.id()   = ParticleType::NextID();
+	      p.cpu()  = ParallelDescriptor::MyProc();
 	  
-   if(p.pos(0) > xlo[0] && p.pos(0) < xhi[0] && 
-      p.pos(1) > xlo[1] && p.pos(1) < xhi[1] && 
-      p.pos(2) > xlo[2] && p.pos(2) < xhi[2]) {
-	particles.push_back(p);
-   }	  
+	      // fill in NSR_SPR items; p.rdata(0) to p.rdata(2) are the velocities
+	      p.rdata(0) = 1.0;
+	      p.rdata(1) = 0.0;
+	      p.rdata(2) = 0.0;
+
+	      p.rdata(AMREX_SPACEDIM) = 293.; // temperature
+	      p.rdata(AMREX_SPACEDIM+1) = 1e-6; // diameter
+	      p.rdata(AMREX_SPACEDIM+2) = 681.41; // fuel density
+
+	      particles.push_back(p);
+
+        n++;
+      }
+      iter++;
 	//std::cout << "Inserting particle p.id=" << p.id()<<'\n' << std::endl;
 	//std::cout << "Inserting particle p.id=" << p.id() << ", p.cpu="<< p.cpu() <<", time=" << time << ", level=" << lev << ", nstep=" << nstep <<", xlo[0]="<< xlo[0] << x << ", xhi[0]="<<xhi[0]<<", xlo[1]="<<xlo[1]<<", xhi[1]="<<xhi[1]<<", xlo[2]="<<xlo[2]<<", xhi[2]="<<xhi[2]<<'\n' << std::endl;
    }
