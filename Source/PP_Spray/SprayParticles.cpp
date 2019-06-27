@@ -4,6 +4,10 @@
 #include <Transport_F.H>
 #include <drag_F.H>
 
+#include "PeleC.H"
+#include "AMReX_DistributionMapping.H"
+#include <AMReX_LoadBalanceKD.H>
+
 using namespace amrex;
 
 void
@@ -119,10 +123,15 @@ SprayParticleContainer::moveKickDrift (MultiFab& state,
 
     int do_move = 1;
 
+ {
+    BL_PROFILE("ParticleContainer::moveKickDriftPart1()");
+
     for (MyParIter pti(*this, lev); pti.isValid(); ++pti) {
 
         AoS& particles = pti.GetArrayOfStructs();
         int Np = particles.size();
+
+        //std::cout << "---Np=" << Np << std::endl;
 
         if (Np > 0) 
         {
@@ -138,6 +147,16 @@ SprayParticleContainer::moveKickDrift (MultiFab& state,
                             plo,phi,reflect_lo,reflect_hi,dx,dt,&do_move);
         }
     }
+  }
+    //load balancing
+    //the weight w should be the estimate time per particle times paritcle count
+    /* {
+      if (PeleC::do_particle_load_balance) {
+        //for(MFIter mfi = MakeMFIter(lev); mfi.isValid(); ++mfi) {
+        //  get_new_data(Work_Estimate_Type)[mfi].plus(w);        
+        //}
+      }
+    }*/
 
     // ********************************************************************************
     // Make sure the momentum put into ghost cells of each grid is added to both 
@@ -145,6 +164,11 @@ SprayParticleContainer::moveKickDrift (MultiFab& state,
     //      we can accomplish this with SumBoundary; however if this level has ghost
     //      cells not covered at this level then we need to do more.
     // ********************************************************************************
+  {
+    BL_PROFILE("ParticleContainer::moveKickDriftPart2()");
+    {
+      BL_PROFILE("ParticleContainer::moveKickDriftPart2.1()");
+
     if (lev > 0)
     {
        int ncomp = tmp_src_ptr->nComp();
@@ -159,7 +183,9 @@ SprayParticleContainer::moveKickDrift (MultiFab& state,
     } else {
        tmp_src_ptr->SumBoundary(Geom(lev).periodicity());
     }
-
+    }
+    {
+      BL_PROFILE("ParticleContainer::moveKickDriftPart2.2()");
     // Add new sources into source *after* we have called SumBoundary
     MultiFab::Add(source,*tmp_src_ptr,0,0,source.nComp(),std::min(source.nGrow(),tmp_src_ptr->nGrow()));
     delete tmp_src_ptr;
@@ -170,8 +196,12 @@ SprayParticleContainer::moveKickDrift (MultiFab& state,
     // Only delete this if in fact we created it.  Note we didn't change state_ptr so 
     //  we don't need to copy anything back into state
     if (state_ptr != &state ) delete state_ptr;
+    }
+  }
 
     // ********************************************************************************
+  {
+    BL_PROFILE("ParticleContainer::moveKickDriftPart3()");
 
     if (lev > 0 && sub_cycle)
     {
@@ -209,6 +239,7 @@ SprayParticleContainer::moveKickDrift (MultiFab& state,
             }
         }
     }
+  }
 
     // ********************************************************************************
 
@@ -220,7 +251,7 @@ SprayParticleContainer::moveKickDrift (MultiFab& state,
 
         if (ParallelDescriptor::IOProcessor())
         {
-            std::cout << "SprayParticleContainer::moveKickDrift() time: " << stoptime << '\n';
+            std::cout << "SprayParticle,Container::moveKickDrift() time: " << stoptime << '\n';
         }
     }
 }
@@ -495,11 +526,11 @@ void
 SprayParticleContainer::insertParticles (Real time, int nstep, int lev, amrex::Real dt)
 {
   if (my_first) {
-    srand(15);
+    srand(150);
     my_first = false;
     t_next = time;
   }
-  
+
   if(nstep%10!=0) return; 
   //return;
   //std::cout<<"---insertParticles called---\n"<<std::endl;
@@ -511,8 +542,6 @@ SprayParticleContainer::insertParticles (Real time, int nstep, int lev, amrex::R
   const double pi = std::atan(1.0)*4.;
   const Geometry& geom = this->m_gdb->Geom(lev);
 
-  int n_particles = 20;
-  //Real z = 1e-6;
   int i = 0;
   
   Real part_D    = 1e-6;
@@ -525,30 +554,11 @@ SprayParticleContainer::insertParticles (Real time, int nstep, int lev, amrex::R
   int n_max_part = 100000;
 
   int n = 0;
-
-  //while (mass < mass_target)
-  //{
-    //Real rand1 = double(rand()) / (double(RAND_MAX) + 1.0);
-    //Real rand2 = double(rand()) / (double(RAND_MAX) + 1.0);
-
-    //Real x = 1e-6;
-    //Real y = 2+4*rand1;
-    //Real z = 1.5*rand2;
  
-   // if (pow(x,2.)+pow(y,2) < pow(.00017*.5,2.))
-   // {
-   //   mass += part_mass;
-      //parts[n] = {x,y,z};
-   //   n += 1;
-  //  }
-  //}
-
-  // same particle array parts is created on every cpu
-  // MFIter can loop over valid boxes and check for every box if inflow particles belong to box
-  
   // number of particles to insert overall
-  int n_part_insert = 20;
-
+  int n_part_insert = 33;
+  //int n_part_insert = 105;
+  
   //amrex::Print() << "mass_flow="<<mass_flow<<", mass_target="<<mass_target<<", part_mass="<<part_mass<<", mass_target/part_mass="<<(mass_target/part_mass)<<", n_part_insert="<<n_part_insert<<'\n';
   //std::cout << "parts[0].x=" << parts[0].x << ", parts[0].y=" << parts[0].y << "parts[1].x=" << parts[1].x << ", parts[1].y=" << parts[1].y << '\n';
 
@@ -562,15 +572,16 @@ SprayParticleContainer::insertParticles (Real time, int nstep, int lev, amrex::R
     const Real* xlo = temp.lo();
     const Real* xhi = temp.hi();
 
-    for(int n = 0, iter=0; n < n_part_insert && iter<200 ;) {
+    for(int n = 0, iter=0; n < n_part_insert && iter<2000 ;) {
       Real rand1 = double(rand()) / (double(RAND_MAX) + 1.0);
       Real rand2 = double(rand()) / (double(RAND_MAX) + 1.0);
 
 	    ParticleType p;
 
       p.pos(0) = 1e-6;
-	    p.pos(1) = 2+4.0*rand1;
-	    p.pos(2) = 1.5*rand2;
+      p.pos(1) = 2.0+4.0*rand1;
+      //p.pos(1) = 3.25+1.0*rand1;
+      p.pos(2) = 1.5*rand2;
 
       if(p.pos(0) > xlo[0] && p.pos(0) < xhi[0] && 
          p.pos(1) > xlo[1] && p.pos(1) < xhi[1] && 
@@ -598,6 +609,7 @@ SprayParticleContainer::insertParticles (Real time, int nstep, int lev, amrex::R
    }
    // std::cout << " wge particle count size=" << particles.size()<<'\n' << std::endl;
  }
+
   Redistribute();
 }
 
