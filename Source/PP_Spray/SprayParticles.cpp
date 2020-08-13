@@ -374,11 +374,31 @@ SprayParticleContainer::updateParticles(const int&  lev,
     SprayData fdat = m_fuelData.getSprayData();
     Array4<const Real> const& statearr = state.array(pti);
     Array4<Real> const& sourcearr = source.array(pti);
+
 #ifdef SPRAY_PELE_LM
     GpuArray<
       Array4<const Real>, AMREX_SPACEDIM> const
       umac{AMREX_D_DECL(u_mac[0].array(pti), u_mac[1].array(pti), u_mac[2].array(pti))};
 #endif
+
+#ifdef USE_GRIT
+    copyPeleAoStoGrit(pti.GetArrayOfStructs(), Np, plo, dx, statearr, sourcearr);
+    
+    const int NX = statearr.jstride;
+    const int NY = statearr.kstride/NX;
+    const int NZ = statearr.nstride/NY/NX;
+
+    const int sNX = sourcearr.jstride;
+    const int sNY = sourcearr.kstride/sNX;
+    const int sNZ = sourcearr.nstride/sNY/sNX;
+
+    pele_grit.advanceSprays(Np, flow_dt, dx.data(), AMREX_SPACEDIM, 
+                            NX, NY, NZ, rhoIndx, momIndx, engIndx,
+                            utempIndx, specIndx, do_move, sNX, sNY, sNZ);
+
+    copyGrittoPeleAoS(pti.GetArrayOfStructs(), Np, plo, dx, statearr);
+
+#else
     AMREX_FOR_1D ( Np, i,
     {
       ParticleType& p = pstruct[i];
@@ -721,5 +741,75 @@ SprayParticleContainer::updateParticles(const int&  lev,
         } // End of isub while loop
       } // End of p.id() > 0 check
     }); // End of loop over particles
+#endif
   }
 }
+
+#ifdef USE_GRIT
+void SprayParticleContainer::copyPeleAoStoGrit(const amrex::ArrayOfStructs<6,0>& peleparticles, 
+                                               const long int np, const amrex::GpuArray<double, 2ul>& plo, 
+                                               const amrex::GpuArray<double, 2ul>& dx, 
+                                               const amrex::Array4<const double>& statearr,
+                                               const amrex::Array4<double>& sourcearr)
+{
+  pele_grit.ptr_state = statearr.dataPtr();
+  pele_grit.ptr_source = sourcearr.dataPtr();
+
+  double begin[3];
+  begin[0]=static_cast<double>(statearr.begin.x);
+  begin[1]=static_cast<double>(statearr.begin.y);
+  begin[2]=static_cast<double>(statearr.begin.z);
+
+  int n = 0;
+  for(auto& p: peleparticles)
+  {
+    if (p.id()>-1)
+    {
+      pele_grit.ptr_spray[n].id = p.id();
+      pele_grit.ptr_spray[n].d = p.rdata(PeleC::pstateDia);
+      pele_grit.ptr_spray[n].t = p.rdata(PeleC::pstateT);
+      for(size_t l=0; l<AMREX_SPACEDIM; l++)
+      {
+        pele_grit.ptr_spray[n].x[l] = (p.pos(l)-plo[l])/dx[l] - 0.5 - begin[l];
+        pele_grit.ptr_spray[n].u[l] = p.rdata(PeleC::pstateVel+l);
+      }
+    }
+    else
+    {
+      pele_grit.ptr_spray[n].id = -1;
+    }
+    n++;
+  }
+}
+
+void SprayParticleContainer::copyGrittoPeleAoS(amrex::ArrayOfStructs<6,0>& peleparticles, 
+                                               const long int np,  const amrex::GpuArray<double, 2ul>& plo, 
+                                               const amrex::GpuArray<double, 2ul>& dx, 
+                                               const amrex::Array4<const double>& statearr)
+{
+  double begin[3];
+  begin[0]=(double)statearr.begin.x;
+  begin[1]=(double)statearr.begin.y;
+  begin[2]=(double)statearr.begin.z;
+  
+  int n=0;
+  for(auto& p: peleparticles)
+  {
+    if (pele_grit.ptr_spray[n].id > -1)
+    {
+      for(size_t l=0; l<AMREX_SPACEDIM; l++)
+      {
+        p.pos(l) = (pele_grit.ptr_spray[n].x[l]+0.5+begin[l])*dx[l]+plo[l];
+        p.rdata(PeleC::pstateVel+l) = pele_grit.ptr_spray[n].u[l];
+      }
+      p.rdata(PeleC::pstateDia) = pele_grit.ptr_spray[n].d;
+      p.rdata(PeleC::pstateT) = pele_grit.ptr_spray[n].t;
+    }
+    else
+    {
+       p.id() = -1;
+    }
+    n++;
+  } 
+}
+#endif

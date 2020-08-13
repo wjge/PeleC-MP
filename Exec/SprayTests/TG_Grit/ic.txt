@@ -1,0 +1,8 @@
+number of particles: 266, 266
+rho0: 0.000558821
+p0: 1.61046e+06
+cs: 62003.8
+U: 6200.38
+Re: 1600
+particle diameter: 0.001
+particle density: 0.64

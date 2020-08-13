@@ -10,6 +10,10 @@
 #include "SprayFuelData.H"
 #include "EOS.H"
 
+#ifdef USE_GRIT
+#include "GritPeleSprayInterface.h"
+#endif
+
 #ifdef USE_SPRAY_SOA
 #define NSR_SPR 0
 #define NSI_SPR 0
@@ -62,6 +66,10 @@ public:
   using HostVectReal = amrex::Gpu::HostVector<amrex::Real>;
   using HostVectInt = amrex::Gpu::HostVector<int>;
 
+#ifdef USE_GRIT
+  GritPeleSprayInterface pele_grit;
+#endif
+
   SprayParticleContainer(amrex::Amr* amr, amrex::BCRec* _phys_bc)
     : amrex::AmrParticleContainer<NSR_SPR,NSI_SPR,NAR_SPR,NAI_SPR>(amr),
       sub_cycle(amr->subCycle()),
@@ -71,6 +79,9 @@ public:
   {
     nstate = NSR_SPR;
     init_bcs();
+#ifdef USE_GRIT
+    pele_grit.initializeGrit();
+#endif
   }
 
   ///
@@ -86,9 +97,30 @@ public:
     HostVectReal fuelEnth(NUM_SPECIES);
     EOS::T2Hi(ref_T, fuelEnth.dataPtr());
     m_fuelData.build(critT, boilT, fuelCp, fuelEnth, fuelLatent, fuelIndx);
+#ifdef USE_GRIT
+    copyFuelData(boilT, fuelCp, fuelLatent, ref_T);
+#endif
+
   }
 
-  ~SprayParticleContainer() {}
+#ifdef USE_GRIT
+  void copyFuelData(const HostVectReal& boilT, const HostVectReal& fuelCp, 
+                    const HostVectReal& fuelLatent, amrex::Real ref_T)
+  {
+    pele_grit.fueldata.Tref_ = ref_T;
+    pele_grit.fueldata.boilT_ = boilT[0];
+    pele_grit.fueldata.Cpl_ = fuelCp[0];
+    pele_grit.fueldata.latentref_ = fuelLatent[0];
+    pele_grit.fueldata.updateh();
+  }
+#endif
+
+  ~SprayParticleContainer() 
+  {
+#ifdef USE_GRIT
+    pele_grit.finalizeGrit();
+#endif
+  }
 
   ///
   /// Set the value of particle state for all partilces on a level
@@ -147,6 +179,16 @@ public:
   bool injectParticles(amrex::Real time, amrex::Real dt, int nstep, int lev, int finest_level);
 
   void InitSprayParticles(amrex::AmrLevel* pelec, const int& lev, const int& num_ppc);
+
+#ifdef USE_GRIT
+  void copyPeleAoStoGrit(const amrex::ArrayOfStructs<6,0>& amrparticles, const long int np,
+                         const amrex::GpuArray<double, 2ul>& plo, const amrex::GpuArray<double, 2ul>& dx,
+                         const amrex::Array4<const double>& statearr, const amrex::Array4<double>& sourcearr);
+
+  void copyGrittoPeleAoS(amrex::ArrayOfStructs<6,0>& amrparticles, const long int np,
+                         const amrex::GpuArray<double, 2ul>& plo, const amrex::GpuArray<double, 2ul>& dx,
+                         const amrex::Array4<const double>& statearr);
+#endif
 
 private:
   amrex::Real m_injectVel;
